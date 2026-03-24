@@ -212,17 +212,25 @@ UserInputService.JumpRequest:Connect(function()
 end)
 
 -- [[ COMBAT & SPIN ]] --
-local function equipBat()
-    local char = LocalPlayer.Character; local hum = char and char:FindFirstChildOfClass("Humanoid")
-    if not hum or char:FindFirstChild("Bat") then return end
-    local bp = LocalPlayer:FindFirstChild("Backpack"); local bat = bp and bp:FindFirstChild("Bat")
+local function equipAnyTool()
+    local char = LocalPlayer.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    -- If already holding a tool, do nothing
+    if char:FindFirstChildWhichIsA("Tool") then return end
+    -- Otherwise, try to equip a bat from backpack
+    local bp = LocalPlayer:FindFirstChild("Backpack")
+    local bat = bp and bp:FindFirstChild("Bat")
     if bat then hum:EquipTool(bat) end
 end
 
 local function silentSwing()
-    local char = LocalPlayer.Character; local bat = char and char:FindFirstChild("Bat")
-    local handle = bat and bat:FindFirstChild("Handle")
+    local char = LocalPlayer.Character
+    local tool = char and char:FindFirstChildWhichIsA("Tool")
+    if not tool then return end
+    local handle = tool:FindFirstChild("Handle")
     if not handle or not char:FindFirstChild("HumanoidRootPart") then return end
+
     for _, p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer and p.Character then
             local eh = p.Character:FindFirstChild("HumanoidRootPart")
@@ -244,7 +252,7 @@ local function startAutoSwing()
     autoSwingActive = true
     task.spawn(function()
         while autoSwingActive and SETTINGS.LOCK_ENABLED do
-            equipBat()
+            equipAnyTool()
             silentSwing()
             task.wait(math.random(30, 50) / 100)
         end
@@ -305,15 +313,14 @@ local function tpDownAction()
     end
 end
 
--- [[ DROP ACTION ]] --
+-- [[ DROP ACTION ]] -- (updated with your values: up 100, wait 0.2, down -130)
 local function dropAction()
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 125, 0)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 100, 0)
         task.wait(0.2)
-        hrp.AssemblyLinearVelocity = Vector3.new(0, -300, 0)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -130, 0)
     end
-    -- No auto-left/right toggling removed
 end
 
 -- [[ VISUALS: RADIUS ]] --
@@ -413,15 +420,13 @@ local function updateFloat()
     local root = char:FindFirstChild("HumanoidRootPart")
     if not root then return end
 
-    -- Create or reuse BodyPosition
     if not floatBodyPosition then
         floatBodyPosition = Instance.new("BodyPosition", root)
-        floatBodyPosition.MaxForce = Vector3.new(0, math.huge, 0)  -- only vertical force
-        floatBodyPosition.D = 500      -- damping (higher = less bounce)
-        floatBodyPosition.P = 5000     -- proportional (higher = faster response)
+        floatBodyPosition.MaxForce = Vector3.new(0, math.huge, 0)
+        floatBodyPosition.D = 500
+        floatBodyPosition.P = 5000
     end
 
-    -- Raycast down to find ground
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Exclude
     raycastParams.FilterDescendantsInstances = {char}
@@ -431,7 +436,6 @@ local function updateFloat()
         local targetY = rayResult.Position.Y + SETTINGS.FLOAT_HEIGHT
         floatBodyPosition.Position = Vector3.new(root.Position.X, targetY, root.Position.Z)
     else
-        -- No ground found – fallback: hover at current height + a little
         floatBodyPosition.Position = root.Position + Vector3.new(0, 5, 0)
     end
 end
@@ -447,7 +451,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
     if KEYBINDS.LOCK == keyName then
         SETTINGS.LOCK_ENABLED = not SETTINGS.LOCK_ENABLED
-        if SETTINGS.LOCK_ENABLED then equipBat(); startAutoSwing() else stopAutoSwing() end
+        if SETTINGS.LOCK_ENABLED then equipAnyTool(); startAutoSwing() else stopAutoSwing() end
         if extraPanel then buildExtraPanel() end
     elseif KEYBINDS.DROP == keyName then
         dropAction()
@@ -548,7 +552,7 @@ Grid.SortOrder = Enum.SortOrder.LayoutOrder
 
 local setAutoLeftState, setAutoRightState
 
--- Helper to create a toggle-style button that performs a one‑shot action (no state)
+-- Helper for action buttons (no state, just action)
 local function CreateActionToggle(text, action, layoutOrder)
     local Card = Instance.new("Frame", GridFrame)
     Card.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -604,7 +608,7 @@ local function CreateActionToggle(text, action, layoutOrder)
     return Btn
 end
 
--- Helper for normal toggle buttons
+-- Helper for toggle buttons (stateful)
 local function CreateMoveToggle(text, settingKey, extraLogic, layoutOrder)
     local Card = Instance.new("Frame", GridFrame)
     Card.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -666,9 +670,8 @@ local function CreateMoveToggle(text, settingKey, extraLogic, layoutOrder)
     return apply
 end
 
--- Create toggles with custom layout order
--- Layout order: 1 top left, 2 top right, 3 middle left, 4 middle right, 5 bottom left, 6 bottom right
-local setLockState = CreateMoveToggle("LOCK ON", "LOCK_ENABLED", function(on) if on then equipBat(); startAutoSwing() else stopAutoSwing() end end, 1)
+-- Create toggles with layout order: 1 top left, 2 top right, 3 middle left, 4 middle right, 5 bottom left, 6 bottom right
+local setLockState = CreateMoveToggle("LOCK ON", "LOCK_ENABLED", function(on) if on then equipAnyTool(); startAutoSwing() else stopAutoSwing() end end, 1)
 local setFloatState = CreateMoveToggle("FLOAT", "FLOAT_ENABLED", function(on)
     if not on and floatBodyPosition then
         floatBodyPosition:Destroy()
@@ -765,7 +768,7 @@ local function buildMenuPanel()
 end
 MakeDraggable(MenuBtn, function() menuOpen = not menuOpen; if menuOpen then buildMenuPanel() else if menuPanel then menuPanel:Destroy(); menuPanel = nil end end end)
 
--- EXTRA MENU with scrolling and smaller size --
+-- EXTRA MENU - Clean list style like the picture
 local extraOpen, extraPanel = false, nil
 local ExtraBtn = Instance.new("TextButton", HUDScreen); ExtraBtn.Size = UDim2.new(0, 110, 0, 38); ExtraBtn.Position = resolvePosition("ExtraBtn"); ExtraBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); ExtraBtn.Text = "★ EXTRAS"; ExtraBtn.TextColor3 = Color3.fromRGB(200, 200, 200); ExtraBtn.Font = Enum.Font.GothamBold; ExtraBtn.TextSize = 12; Instance.new("UICorner", ExtraBtn).CornerRadius = UDim.new(0, 8); AddOutline(ExtraBtn); allButtons["ExtraBtn"] = ExtraBtn
 
@@ -781,10 +784,13 @@ end
 
 local function buildExtraPanel()
     if extraPanel then extraPanel:Destroy(); extraPanel = nil end
-    local panelGui = Instance.new("ScreenGui", CoreGui); panelGui.Name = "A1_ExtraMenu"; extraPanel = panelGui
+    local panelGui = Instance.new("ScreenGui", CoreGui)
+    panelGui.Name = "A1_ExtraMenu"
+    extraPanel = panelGui
+
     local panel = Instance.new("Frame", panelGui)
-    panel.Size = UDim2.new(0, 280, 0, 380)
-    panel.Position = UDim2.new(0.5, -140, 0.5, -190)
+    panel.Size = UDim2.new(0, 260, 0, 380)
+    panel.Position = UDim2.new(0.5, -130, 0.5, -190)
     panel.BackgroundColor3 = Color3.fromRGB(5, 15, 30)
     Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
     AddOutline(panel)
@@ -800,30 +806,56 @@ local function buildExtraPanel()
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
     local list = Instance.new("UIListLayout", scroll)
-    list.Padding = UDim.new(0, 8)
+    list.Padding = UDim.new(0, 6)
     list.SortOrder = Enum.SortOrder.LayoutOrder
 
-    local function MakeExtraToggleWithKeybind(labelText, settingKey, bindKey)
+    -- Define the features in order: label, settingKey, bindKey, isAction (if no toggle state)
+    local features = {
+        {"AUTO GRAB", "ENABLED", nil, false},
+        {"SPEED", "SPEED_ENABLED", nil, false},
+        {"FLOAT", "FLOAT_ENABLED", "FLOAT", false},
+        {"LOCK ON", "LOCK_ENABLED", "LOCK", false},
+        {"DROP", "DROP", "DROP", true},
+        {"AUTO L", "AUTOLEFT", "AUTOLEFT", false},
+        {"AUTO R", "AUTORIGHT", "AUTORIGHT", false},
+        {"TP DOWN", "TP_DOWN", "TPDOWN", true},
+    }
+
+    for _, feat in ipairs(features) do
+        local label = feat[1]
+        local settingKey = feat[2]
+        local bindKey = feat[3]
+        local isAction = feat[4]
+
         local row = Instance.new("Frame", scroll)
-        row.Size = UDim2.new(1, -8, 0, 46)
+        row.Size = UDim2.new(1, -12, 0, 38)
         row.BackgroundTransparency = 1
 
+        -- Left side: toggle/action button
         local toggleBtn = Instance.new("TextButton", row)
-        toggleBtn.Size = UDim2.new(0, 150, 0, 38)
-        toggleBtn.Position = UDim2.new(0, 0, 0, 4)
-        toggleBtn.BackgroundColor3 = SETTINGS[settingKey] and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
-        toggleBtn.Text = labelText .. "\n" .. (SETTINGS[settingKey] and "ON" or "OFF")
-        toggleBtn.TextColor3 = SETTINGS[settingKey] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        toggleBtn.Size = UDim2.new(0, 150, 1, -4)
+        toggleBtn.Position = UDim2.new(0, 4, 0, 2)
+        if isAction then
+            toggleBtn.Text = label .. "\nACTION"
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
+            toggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+        else
+            local state = SETTINGS[settingKey] or false
+            toggleBtn.Text = label .. "\n" .. (state and "ON" or "OFF")
+            toggleBtn.BackgroundColor3 = state and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
+            toggleBtn.TextColor3 = state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        end
         toggleBtn.Font = Enum.Font.GothamBold
         toggleBtn.TextSize = 11
         Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
         AddOutline(toggleBtn)
 
+        -- Right side: keybind box
         local keybindBox = Instance.new("TextBox", row)
-        keybindBox.Size = UDim2.new(0, 100, 0, 28)
-        keybindBox.Position = UDim2.new(1, -110, 0, 9)
+        keybindBox.Size = UDim2.new(0, 80, 1, -4)
+        keybindBox.Position = UDim2.new(1, -84, 0, 2)
         keybindBox.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
-        local currentBind = KEYBINDS[bindKey]
+        local currentBind = bindKey and KEYBINDS[bindKey]
         keybindBox.Text = (currentBind and getFriendlyKeyName(currentBind)) or "None"
         keybindBox.TextColor3 = Color3.fromRGB(255, 255, 255)
         keybindBox.Font = Enum.Font.GothamBold
@@ -831,54 +863,64 @@ local function buildExtraPanel()
         Instance.new("UICorner", keybindBox).CornerRadius = UDim.new(0, 6)
         AddOutline(keybindBox)
 
+        -- Keybind capturing
         local capturing = false
         keybindBox.Focused:Connect(function()
-            capturing = true
-            keybindBox.Text = "..."
+            if bindKey then
+                capturing = true
+                keybindBox.Text = "..."
+            end
         end)
         local connection
-        connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
-            if not capturing then return end
-            if gameProcessed then return end
-            local key = input.KeyCode
-            if key == Enum.KeyCode.Unknown then return end
-            local keyName = key.Name
-            KEYBINDS[bindKey] = keyName
-            keybindBox.Text = getFriendlyKeyName(keyName)
-            capturing = false
-            keybindBox:ReleaseFocus()
-            saveConfig()
-            connection:Disconnect()
-        end)
+        if bindKey then
+            connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                if not capturing then return end
+                if gameProcessed then return end
+                local key = input.KeyCode
+                if key == Enum.KeyCode.Unknown then return end
+                local keyName = key.Name
+                KEYBINDS[bindKey] = keyName
+                keybindBox.Text = getFriendlyKeyName(keyName)
+                capturing = false
+                keybindBox:ReleaseFocus()
+                saveConfig()
+                connection:Disconnect()
+            end)
+        end
 
+        -- Toggle/action click handler
         toggleBtn.MouseButton1Click:Connect(function()
-            if settingKey == "DROP" then
-                dropAction()
-            elseif settingKey == "TP_DOWN" then
-                tpDownAction()
+            if isAction then
+                if settingKey == "DROP" then
+                    dropAction()
+                elseif settingKey == "TP_DOWN" then
+                    tpDownAction()
+                end
             else
                 SETTINGS[settingKey] = not SETTINGS[settingKey]
-                toggleBtn.Text = labelText .. "\n" .. (SETTINGS[settingKey] and "ON" or "OFF")
-                toggleBtn.BackgroundColor3 = SETTINGS[settingKey] and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
-                toggleBtn.TextColor3 = SETTINGS[settingKey] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+                local newState = SETTINGS[settingKey]
+                toggleBtn.Text = label .. "\n" .. (newState and "ON" or "OFF")
+                toggleBtn.BackgroundColor3 = newState and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
+                toggleBtn.TextColor3 = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+
                 if settingKey == "LOCK_ENABLED" then
-                    if SETTINGS.LOCK_ENABLED then equipBat(); startAutoSwing() else stopAutoSwing() end
+                    if newState then equipAnyTool(); startAutoSwing() else stopAutoSwing() end
                 elseif settingKey == "AUTOLEFT" then
-                    if SETTINGS.AUTOLEFT then
+                    if newState then
                         SETTINGS.AUTORIGHT = false
                         RightPhase = 1
                         if setAutoRightState then setAutoRightState(false) end
                     end
                     LeftPhase = 1
                 elseif settingKey == "AUTORIGHT" then
-                    if SETTINGS.AUTORIGHT then
+                    if newState then
                         SETTINGS.AUTOLEFT = false
                         LeftPhase = 1
                         if setAutoLeftState then setAutoLeftState(false) end
                     end
                     RightPhase = 1
                 elseif settingKey == "FLOAT_ENABLED" then
-                    if not SETTINGS.FLOAT_ENABLED and floatBodyPosition then
+                    if not newState and floatBodyPosition then
                         floatBodyPosition:Destroy()
                         floatBodyPosition = nil
                         local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
@@ -887,20 +929,10 @@ local function buildExtraPanel()
                         end
                     end
                 end
+                saveConfig()
             end
-            saveConfig()
         end)
-        return row
     end
-
-    MakeExtraToggleWithKeybind("AUTO GRAB", "ENABLED", nil)
-    MakeExtraToggleWithKeybind("SPEED", "SPEED_ENABLED", nil)
-    MakeExtraToggleWithKeybind("FLOAT", "FLOAT_ENABLED", "FLOAT")
-    MakeExtraToggleWithKeybind("LOCK ON", "LOCK_ENABLED", "LOCK")
-    MakeExtraToggleWithKeybind("DROP", "DROP", "DROP")
-    MakeExtraToggleWithKeybind("AUTO L", "AUTOLEFT", "AUTOLEFT")
-    MakeExtraToggleWithKeybind("AUTO R", "AUTORIGHT", "AUTORIGHT")
-    MakeExtraToggleWithKeybind("TP DOWN", "TP_DOWN", "TPDOWN")
 end
 
 MakeDraggable(ExtraBtn, function() extraOpen = not extraOpen; if extraOpen then buildExtraPanel() else if extraPanel then extraPanel:Destroy(); extraPanel = nil end end end)
@@ -914,7 +946,7 @@ RunService.Heartbeat:Connect(function()
     circlePart.Position = hrp.Position
 
     if SETTINGS.LOCK_ENABLED then
-        if not char:FindFirstChild("Bat") then equipBat() end
+        equipAnyTool()
         local nearest, dist, torso = nil, math.huge, nil
         for _, p in ipairs(Players:GetPlayers()) do
             if p ~= LocalPlayer and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
