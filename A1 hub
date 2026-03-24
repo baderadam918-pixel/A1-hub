@@ -309,19 +309,11 @@ end
 local function dropAction()
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
-        task.wait(math.random(5, 15) / 100)
-        hrp.AssemblyLinearVelocity = Vector3.new(0, 150, 0)
+        hrp.AssemblyLinearVelocity = Vector3.new(0, 125, 0)
         task.wait(0.2)
-        hrp.AssemblyLinearVelocity = Vector3.new(math.random(-10, 10), -800, math.random(-10, 10))
+        hrp.AssemblyLinearVelocity = Vector3.new(0, -300, 0)
     end
-    if SETTINGS.AUTOLEFT then
-        SETTINGS.AUTOLEFT = false
-        if setAutoLeftState then setAutoLeftState(false) end
-    end
-    if SETTINGS.AUTORIGHT then
-        SETTINGS.AUTORIGHT = false
-        if setAutoRightState then setAutoRightState(false) end
-    end
+    -- No auto-left/right toggling removed
 end
 
 -- [[ VISUALS: RADIUS ]] --
@@ -452,7 +444,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     local key = input.KeyCode
     if key == Enum.KeyCode.Unknown then return end
     local keyName = key.Name
-    
+
     if KEYBINDS.LOCK == keyName then
         SETTINGS.LOCK_ENABLED = not SETTINGS.LOCK_ENABLED
         if SETTINGS.LOCK_ENABLED then equipBat(); startAutoSwing() else stopAutoSwing() end
@@ -677,7 +669,16 @@ end
 -- Create toggles with custom layout order
 -- Layout order: 1 top left, 2 top right, 3 middle left, 4 middle right, 5 bottom left, 6 bottom right
 local setLockState = CreateMoveToggle("LOCK ON", "LOCK_ENABLED", function(on) if on then equipBat(); startAutoSwing() else stopAutoSwing() end end, 1)
-CreateActionToggle("DROP", dropAction, 2)
+local setFloatState = CreateMoveToggle("FLOAT", "FLOAT_ENABLED", function(on)
+    if not on and floatBodyPosition then
+        floatBodyPosition:Destroy()
+        floatBodyPosition = nil
+        local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+        if root then
+            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
+        end
+    end
+end, 2)
 setAutoLeftState = CreateMoveToggle("AUTO LEFT", "AUTOLEFT", function(on) 
     if on then 
         setAutoRightState(false)
@@ -692,16 +693,7 @@ setAutoRightState = CreateMoveToggle("AUTO RIGHT", "AUTORIGHT", function(on)
     end
     RightPhase = 1
 end, 4)
-local setFloatState = CreateMoveToggle("FLOAT", "FLOAT_ENABLED", function(on)
-    if not on and floatBodyPosition then
-        floatBodyPosition:Destroy()
-        floatBodyPosition = nil
-        local root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-        if root then
-            root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
-        end
-    end
-end, 5)
+CreateActionToggle("DROP", dropAction, 5)
 CreateActionToggle("TP DOWN", tpDownAction, 6)
 
 -- [[ TP BUTTONS ]] --
