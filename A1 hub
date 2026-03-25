@@ -9,7 +9,7 @@ local LocalPlayer = Players.LocalPlayer
 
 -- [[ CLEANUP ]] --
 local function fullCleanup()
-    local names = {"A1_DuelHelper", "A1_DuelUI_TopPosition", "A1_HUD", "A1_MovementGUI", "A1_TpPicker", "A1_AutoGrab", "A1_Menu", "A1_ExtraMenu", "A1_SpeedDisplay"}
+    local names = {"A1_DuelHelper", "A1_DuelUI_TopPosition", "A1_HUD", "A1_MovementGUI", "A1_TpPicker", "A1_AutoGrab", "A1_Menu", "A1_ExtraMenu", "A1_SpeedDisplay", "A1_MainGUI"}
     for _, name in ipairs(names) do
         if CoreGui:FindFirstChild(name) then CoreGui[name]:Destroy() end
     end
@@ -77,10 +77,13 @@ local allButtons = {}
 local savedPositions = {}
 
 local DEFAULT_POSITIONS = {
-    Tp        = UDim2.new(0.5, 130,  1, -155), Save      = UDim2.new(0,   8,    0, 8),
-    ResetTp   = UDim2.new(0,   96,   0, 8),    TpAuto    = UDim2.new(0,   192,  0, 8),
-    Lag       = UDim2.new(0.5, 10,   1, -205), MenuBtn   = UDim2.new(0.5, -55,  1, -205),
-    ExtraBtn  = UDim2.new(0.5, 60,   1, -205), CarryBtn  = UDim2.new(0.5, -40,  0, 40)
+    Save      = UDim2.new(0,   8,    0, 8),
+    ResetTp   = UDim2.new(0,   96,   0, 8),    -- will be ignored
+    TpAuto    = UDim2.new(0,   192,  0, 8),    -- will be ignored
+    Lag       = UDim2.new(0.5, 10,   1, -205),
+    MenuBtn   = UDim2.new(0.5, -55,  1, -205),
+    ExtraBtn  = UDim2.new(0.5, 60,   1, -205),
+    CarryBtn  = UDim2.new(0.5, -40,  0, 40)
 }
 
 local L_POS_1, L_POS_END, L_POS_RETURN, L_POS_FINAL = Vector3.new(-476.48, -6.28, 92.73), Vector3.new(-483.12, -4.95, 94.80), Vector3.new(-475, -8, 19), Vector3.new(-488, -6, 19)
@@ -142,8 +145,8 @@ loadMenuConfig()
 -- [[ UTILS ]] --
 local function AddOutline(frame)
     local stroke = Instance.new("UIStroke", frame)
-    stroke.Color = Color3.fromRGB(255, 255, 255); stroke.Thickness = 2
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Transparency = 0
+    stroke.Color = Color3.fromRGB(255, 255, 255); stroke.Thickness = 1.5
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; stroke.Transparency = 0.3
 end
 
 local function MakeDraggable(frame, onClick)
@@ -216,9 +219,7 @@ local function equipAnyTool()
     local char = LocalPlayer.Character
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
-    -- If already holding a tool, do nothing
     if char:FindFirstChildWhichIsA("Tool") then return end
-    -- Otherwise, try to equip a bat from backpack
     local bp = LocalPlayer:FindFirstChild("Backpack")
     local bat = bp and bp:FindFirstChild("Bat")
     if bat then hum:EquipTool(bat) end
@@ -313,7 +314,7 @@ local function tpDownAction()
     end
 end
 
--- [[ DROP ACTION ]] -- (updated with your values: up 100, wait 0.2, down -130)
+-- [[ DROP ACTION ]] --
 local function dropAction()
     local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if hrp then
@@ -452,7 +453,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if KEYBINDS.LOCK == keyName then
         SETTINGS.LOCK_ENABLED = not SETTINGS.LOCK_ENABLED
         if SETTINGS.LOCK_ENABLED then equipAnyTool(); startAutoSwing() else stopAutoSwing() end
-        if extraPanel then buildExtraPanel() end
+        if mainGUI then refreshMainGUI() end
     elseif KEYBINDS.DROP == keyName then
         dropAction()
     elseif KEYBINDS.AUTOLEFT == keyName then
@@ -463,7 +464,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if setAutoRightState then setAutoRightState(false) end
         end
         LeftPhase = 1
-        if extraPanel then buildExtraPanel() end
+        if mainGUI then refreshMainGUI() end
     elseif KEYBINDS.AUTORIGHT == keyName then
         SETTINGS.AUTORIGHT = not SETTINGS.AUTORIGHT
         if SETTINGS.AUTORIGHT then
@@ -472,7 +473,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
             if setAutoLeftState then setAutoLeftState(false) end
         end
         RightPhase = 1
-        if extraPanel then buildExtraPanel() end
+        if mainGUI then refreshMainGUI() end
     elseif KEYBINDS.FLOAT == keyName then
         SETTINGS.FLOAT_ENABLED = not SETTINGS.FLOAT_ENABLED
         if not SETTINGS.FLOAT_ENABLED and floatBodyPosition then
@@ -483,7 +484,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 root.AssemblyLinearVelocity = Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z)
             end
         end
-        if extraPanel then buildExtraPanel() end
+        if mainGUI then refreshMainGUI() end
     elseif KEYBINDS.TPDOWN == keyName then
         tpDownAction()
     end
@@ -516,7 +517,6 @@ local function saveMovementGUIPos()
     saveConfig()
 end
 
--- Make MoveFrame draggable
 local dragging, dragInput, dragStart, startPos, moved = false, nil, nil, nil, false
 MoveFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -552,7 +552,6 @@ Grid.SortOrder = Enum.SortOrder.LayoutOrder
 
 local setAutoLeftState, setAutoRightState
 
--- Helper for action buttons (no state, just action)
 local function CreateActionToggle(text, action, layoutOrder)
     local Card = Instance.new("Frame", GridFrame)
     Card.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -608,7 +607,6 @@ local function CreateActionToggle(text, action, layoutOrder)
     return Btn
 end
 
--- Helper for toggle buttons (stateful)
 local function CreateMoveToggle(text, settingKey, extraLogic, layoutOrder)
     local Card = Instance.new("Frame", GridFrame)
     Card.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
@@ -670,7 +668,6 @@ local function CreateMoveToggle(text, settingKey, extraLogic, layoutOrder)
     return apply
 end
 
--- Create toggles with layout order: 1 top left, 2 top right, 3 middle left, 4 middle right, 5 bottom left, 6 bottom right
 local setLockState = CreateMoveToggle("LOCK ON", "LOCK_ENABLED", function(on) if on then equipAnyTool(); startAutoSwing() else stopAutoSwing() end end, 1)
 local setFloatState = CreateMoveToggle("FLOAT", "FLOAT_ENABLED", function(on)
     if not on and floatBodyPosition then
@@ -699,78 +696,25 @@ end, 4)
 CreateActionToggle("DROP", dropAction, 5)
 CreateActionToggle("TP DOWN", tpDownAction, 6)
 
--- [[ TP BUTTONS ]] --
-local TpHUD = Instance.new("TextButton", HUDScreen); TpHUD.Size = UDim2.new(0, 110, 0, 38); TpHUD.Position = resolvePosition("Tp"); TpHUD.BackgroundColor3 = Color3.fromRGB(10, 25, 50); TpHUD.Font = Enum.Font.GothamBold; TpHUD.TextSize = 11; Instance.new("UICorner", TpHUD).CornerRadius = UDim.new(0, 8); AddOutline(TpHUD); allButtons["Tp"] = TpHUD
-local function updateTpButton()
-    if tpSide == "LEFT" then TpHUD.Text = "TP LEFT\n► CLICK"; TpHUD.TextColor3 = Color3.fromRGB(255, 255, 255); TpHUD.BackgroundColor3 = Color3.fromRGB(20, 80, 150)
-    elseif tpSide == "RIGHT" then TpHUD.Text = "TP RIGHT\n► CLICK"; TpHUD.TextColor3 = Color3.fromRGB(255, 255, 255); TpHUD.BackgroundColor3 = Color3.fromRGB(20, 80, 150)
-    else TpHUD.Text = "TP\nNOT SET"; TpHUD.TextColor3 = Color3.fromRGB(200, 200, 200); TpHUD.BackgroundColor3 = Color3.fromRGB(10, 25, 50) end
-end
-MakeDraggable(TpHUD, function()
-    local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    if not tpSide or not hrp then return end
-    task.spawn(function()
-        if tpSide == "LEFT" then hrp.CFrame = CFrame.new(TP_LEFT_1); task.wait(0.12); hrp.CFrame = CFrame.new(TP_LEFT_2)
-        elseif tpSide == "RIGHT" then hrp.CFrame = CFrame.new(TP_RIGHT_1); task.wait(0.12); hrp.CFrame = CFrame.new(TP_RIGHT_2) end
-    end)
-end)
-
-local function showTpPicker()
-    if CoreGui:FindFirstChild("A1_TpPicker") then CoreGui.A1_TpPicker:Destroy() end
-    local pickerGui = Instance.new("ScreenGui", CoreGui); pickerGui.Name = "A1_TpPicker"
-    local bg = Instance.new("Frame", pickerGui); bg.Size = UDim2.new(0, 240, 0, 110); bg.Position = UDim2.new(0.5, -120, 0.5, -55); bg.BackgroundColor3 = Color3.fromRGB(5, 15, 30); Instance.new("UICorner", bg).CornerRadius = UDim.new(0, 8); AddOutline(bg)
-    local function makePickBtn(text, x, side)
-        local btn = Instance.new("TextButton", bg); btn.Size = UDim2.new(0, 100, 0, 38); btn.Position = UDim2.new(0, x, 0, 38); btn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); btn.Text = text; btn.TextColor3 = Color3.fromRGB(255, 255, 255); btn.Font = Enum.Font.GothamBold; btn.TextSize = 12; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8); AddOutline(btn)
-        btn.MouseButton1Click:Connect(function() tpSide = side; updateTpButton(); saveConfig(); pickerGui:Destroy() end)
-    end
-    makePickBtn("◀ TP LEFT", 10, "LEFT"); makePickBtn("TP RIGHT ▶", 130, "RIGHT")
-    local skipBtn = Instance.new("TextButton", bg); skipBtn.Size = UDim2.new(1, -20, 0, 20); skipBtn.Position = UDim2.new(0, 10, 0, 84); skipBtn.BackgroundTransparency = 1; skipBtn.Text = "skip"; skipBtn.TextColor3 = Color3.fromRGB(200, 200, 200); skipBtn.Font = Enum.Font.Gotham; skipBtn.TextSize = 10
-    skipBtn.MouseButton1Click:Connect(function() pickerGui:Destroy() end)
-end
-if not tpSide then showTpPicker() end
-
+-- [[ MAIN HUD BUTTONS (SAVE, etc.) ]] --
 local SaveBtn = Instance.new("TextButton", HUDScreen); SaveBtn.Size = UDim2.new(0, 80, 0, 28); SaveBtn.Position = resolvePosition("Save"); SaveBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); SaveBtn.Text = "💾 SAVE"; SaveBtn.TextColor3 = Color3.fromRGB(200, 200, 200); SaveBtn.Font = Enum.Font.GothamBold; SaveBtn.TextSize = 11; Instance.new("UICorner", SaveBtn).CornerRadius = UDim.new(0, 8); AddOutline(SaveBtn); allButtons["Save"] = SaveBtn
 MakeDraggable(SaveBtn, function() saveConfig(); SaveBtn.Text = "✔ SAVED"; task.delay(1.5, function() SaveBtn.Text = "💾 SAVE" end) end)
 
-local ResetTpBtn = Instance.new("TextButton", HUDScreen); ResetTpBtn.Size = UDim2.new(0, 88, 0, 28); ResetTpBtn.Position = resolvePosition("ResetTp"); ResetTpBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); ResetTpBtn.Text = "🔄 TP SIDE"; ResetTpBtn.TextColor3 = Color3.fromRGB(200, 200, 200); ResetTpBtn.Font = Enum.Font.GothamBold; ResetTpBtn.TextSize = 11; Instance.new("UICorner", ResetTpBtn).CornerRadius = UDim.new(0, 8); AddOutline(ResetTpBtn); allButtons["ResetTp"] = ResetTpBtn; MakeDraggable(ResetTpBtn, function() showTpPicker() end)
+-- Remove any leftover TP buttons (they were removed earlier)
+tpAutoEnabled = false
 
-local TpAutoBtn = Instance.new("TextButton", HUDScreen); TpAutoBtn.Size = UDim2.new(0, 100, 0, 28); TpAutoBtn.Position = resolvePosition("TpAuto"); TpAutoBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); TpAutoBtn.Text = "TP AUTO\nOFF"; TpAutoBtn.TextColor3 = Color3.fromRGB(200, 200, 200); TpAutoBtn.Font = Enum.Font.GothamBold; TpAutoBtn.TextSize = 11; Instance.new("UICorner", TpAutoBtn).CornerRadius = UDim.new(0, 8); AddOutline(TpAutoBtn); allButtons["TpAuto"] = TpAutoBtn
-MakeDraggable(TpAutoBtn, function() tpAutoEnabled = not tpAutoEnabled; TpAutoBtn.Text = "TP AUTO\n" .. (tpAutoEnabled and "ON" or "OFF") end)
-
--- [[ MENUS (MAIN & EXTRAS) ]] --
-local menuOpen, menuPanel = false, nil
-local MenuBtn = Instance.new("TextButton", HUDScreen); MenuBtn.Size = UDim2.new(0, 110, 0, 38); MenuBtn.Position = resolvePosition("MenuBtn"); MenuBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); MenuBtn.Text = "☰ MENU"; MenuBtn.TextColor3 = Color3.fromRGB(200, 200, 200); MenuBtn.Font = Enum.Font.GothamBold; MenuBtn.TextSize = 12; Instance.new("UICorner", MenuBtn).CornerRadius = UDim.new(0, 8); AddOutline(MenuBtn); allButtons["MenuBtn"] = MenuBtn
-
-local function buildMenuPanel()
-    if menuPanel then menuPanel:Destroy(); menuPanel = nil end
-    local panelGui = Instance.new("ScreenGui", CoreGui); panelGui.Name = "A1_Menu"; menuPanel = panelGui
-    local panel = Instance.new("Frame", panelGui); panel.Size = UDim2.new(0, 220, 0, 10); panel.Position = UDim2.new(0.5, -110, 0.5, -145); panel.BackgroundColor3 = Color3.fromRGB(5, 15, 30); Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8); AddOutline(panel); MakeDraggable(panel)
-    local yOff = 38
-    local function MakeMenuToggle(labelText, currentState, onToggle)
-        local btn = Instance.new("TextButton", panel); btn.Size = UDim2.new(1, -20, 0, 38); btn.Position = UDim2.new(0, 10, 0, yOff); btn.BackgroundColor3 = currentState and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50); btn.Text = labelText .. "\n" .. (currentState and "ON" or "OFF"); btn.TextColor3 = currentState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200); btn.Font = Enum.Font.GothamBold; btn.TextSize = 11; Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8); AddOutline(btn); yOff = yOff + 46
-        local state = currentState
-        btn.MouseButton1Click:Connect(function() state = not state; btn.Text = labelText .. "\n" .. (state and "ON" or "OFF"); onToggle(state) end)
+-- [[ GLOBAL GUI SCALE ]] --
+local globalGUIScale = 1.0   -- 100% default
+local function setGUIScale(percent)
+    percent = math.clamp(percent, 50, 150)
+    globalGUIScale = percent / 100
+    if mainGUI then
+        refreshMainGUI()
     end
-    local function MakeInputRow(labelText, currentVal, onChanged)
-        local lbl = Instance.new("TextLabel", panel); lbl.Size = UDim2.new(0, 100, 0, 28); lbl.Position = UDim2.new(0, 10, 0, yOff); lbl.BackgroundTransparency = 1; lbl.Text = labelText; lbl.TextColor3 = Color3.fromRGB(200, 200, 200); lbl.Font = Enum.Font.GothamBold; lbl.TextSize = 11; lbl.TextXAlignment = Enum.TextXAlignment.Left
-        local box = Instance.new("TextBox", panel); box.Size = UDim2.new(0, 90, 0, 28); box.Position = UDim2.new(1, -100, 0, yOff); box.BackgroundColor3 = Color3.fromRGB(10, 25, 50); box.Text = tostring(currentVal); box.TextColor3 = Color3.fromRGB(255, 255, 255); box.Font = Enum.Font.GothamBold; box.TextSize = 11; Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6); AddOutline(box)
-        box.FocusLost:Connect(function() local val = tonumber(box.Text); if val then onChanged(val) end end); yOff = yOff + 36
-    end
-    MakeMenuToggle("SPIN", SETTINGS.SPIN_ENABLED, function(on) SETTINGS.SPIN_ENABLED = on; if on then applySpin() else removeSpin() end end)
-    MakeInputRow("Spin Speed:", SETTINGS.SPIN_SPEED, function(val) SETTINGS.SPIN_SPEED = val; if SETTINGS.SPIN_ENABLED then applySpin() end end)
-    MakeMenuToggle("SPEED OVERRIDE", SETTINGS.SPEED_ENABLED, function(on) SETTINGS.SPEED_ENABLED = on end)
-    MakeInputRow("Speed Value:", SETTINGS.TARGET_SPEED, function(val) SETTINGS.TARGET_SPEED = val end)
-    MakeInputRow("Steal Speed:", SETTINGS.STEAL_SPEED, function(val) SETTINGS.STEAL_SPEED = val end)
-    MakeMenuToggle("UNWALK", SETTINGS.UNWALK, function(on) SETTINGS.UNWALK = on end)
-    MakeMenuToggle("SPAM", SETTINGS.SPAM_ENABLED, function(on) SETTINGS.SPAM_ENABLED = on end)
-    MakeInputRow("Float Height:", SETTINGS.FLOAT_HEIGHT, function(val) SETTINGS.FLOAT_HEIGHT = val; saveConfig() end)
-    panel.Size = UDim2.new(0, 220, 0, yOff + 12)
 end
-MakeDraggable(MenuBtn, function() menuOpen = not menuOpen; if menuOpen then buildMenuPanel() else if menuPanel then menuPanel:Destroy(); menuPanel = nil end end end)
 
--- EXTRA MENU - Clean list style like the picture
-local extraOpen, extraPanel = false, nil
-local ExtraBtn = Instance.new("TextButton", HUDScreen); ExtraBtn.Size = UDim2.new(0, 110, 0, 38); ExtraBtn.Position = resolvePosition("ExtraBtn"); ExtraBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50); ExtraBtn.Text = "★ EXTRAS"; ExtraBtn.TextColor3 = Color3.fromRGB(200, 200, 200); ExtraBtn.Font = Enum.Font.GothamBold; ExtraBtn.TextSize = 12; Instance.new("UICorner", ExtraBtn).CornerRadius = UDim.new(0, 8); AddOutline(ExtraBtn); allButtons["ExtraBtn"] = ExtraBtn
+-- [[ UNIFIED MAIN GUI WITH PAGES (Main Settings <-> Extras) ]] --
+local mainGUI = nil
 
 local function getFriendlyKeyName(keyName)
     local mapping = {
@@ -782,34 +726,224 @@ local function getFriendlyKeyName(keyName)
     return mapping[keyName] or keyName
 end
 
-local function buildExtraPanel()
-    if extraPanel then extraPanel:Destroy(); extraPanel = nil end
-    local panelGui = Instance.new("ScreenGui", CoreGui)
-    panelGui.Name = "A1_ExtraMenu"
-    extraPanel = panelGui
+local function refreshMainGUI()
+    if mainGUI then
+        buildMainGUI()
+    end
+end
 
-    local panel = Instance.new("Frame", panelGui)
-    panel.Size = UDim2.new(0, 260, 0, 380)
-    panel.Position = UDim2.new(0.5, -130, 0.5, -190)
+local function buildMainGUI()
+    if mainGUI then mainGUI:Destroy(); mainGUI = nil end
+    mainGUI = Instance.new("ScreenGui", CoreGui)
+    mainGUI.Name = "A1_MainGUI"
+    mainGUI.ResetOnSpawn = false
+
+    -- Apply scale to sizes
+    local scale = globalGUIScale
+    -- SMALLER size: 360x480 instead of 420x560
+    local baseWidth = 360 * scale
+    local baseHeight = 480 * scale
+    local panel = Instance.new("Frame", mainGUI)
+    panel.Size = UDim2.new(0, baseWidth, 0, baseHeight)
+    panel.Position = UDim2.new(0.5, -baseWidth/2, 0.5, -baseHeight/2)
     panel.BackgroundColor3 = Color3.fromRGB(5, 15, 30)
-    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 8)
+    panel.BackgroundTransparency = 0.15
+    Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 12 * scale)
     AddOutline(panel)
     MakeDraggable(panel)
 
-    local scroll = Instance.new("ScrollingFrame", panel)
-    scroll.Size = UDim2.new(1, -12, 1, -12)
-    scroll.Position = UDim2.new(0, 6, 0, 6)
-    scroll.BackgroundTransparency = 1
-    scroll.ScrollBarThickness = 8
-    scroll.ScrollBarImageColor3 = Color3.fromRGB(100, 100, 100)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    -- Title bar (scaled)
+    local titleBar = Instance.new("Frame", panel)
+    titleBar.Size = UDim2.new(1, 0, 0, 38 * scale)  -- slightly shorter
+    titleBar.BackgroundColor3 = Color3.fromRGB(10, 20, 35)
+    titleBar.BackgroundTransparency = 0.2
+    Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12 * scale)
+    local titleText = Instance.new("TextLabel", titleBar)
+    titleText.Size = UDim2.new(1, 0, 1, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "A1 HUB"
+    titleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 16 * scale
 
-    local list = Instance.new("UIListLayout", scroll)
-    list.Padding = UDim.new(0, 6)
-    list.SortOrder = Enum.SortOrder.LayoutOrder
+    local closeBtn = Instance.new("TextButton", titleBar)
+    closeBtn.Size = UDim2.new(0, 30 * scale, 1, -6 * scale)
+    closeBtn.Position = UDim2.new(1, -35 * scale, 0, 3 * scale)
+    closeBtn.BackgroundColor3 = Color3.fromRGB(40, 50, 60)
+    closeBtn.Text = "✕"
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    closeBtn.Font = Enum.Font.GothamBold
+    closeBtn.TextSize = 14 * scale
+    Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(1, 0)
+    closeBtn.MouseButton1Click:Connect(function()
+        mainGUI:Destroy()
+        mainGUI = nil
+    end)
 
-    -- Define the features in order: label, settingKey, bindKey, isAction (if no toggle state)
+    -- Content container (will hold both pages)
+    local contentContainer = Instance.new("Frame", panel)
+    contentContainer.Size = UDim2.new(1, -20 * scale, 1, -90 * scale)  -- less height reserved
+    contentContainer.Position = UDim2.new(0, 10 * scale, 0, 45 * scale)
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.ClipsDescendants = true
+
+    -- Page 1: Main Settings
+    local mainPage = Instance.new("ScrollingFrame", contentContainer)
+    mainPage.Size = UDim2.new(1, 0, 1, 0)
+    mainPage.BackgroundTransparency = 1
+    mainPage.ScrollBarThickness = 6 * scale
+    mainPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+    mainPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    mainPage.Visible = true
+
+    local mainContainer = Instance.new("Frame", mainPage)
+    mainContainer.Size = UDim2.new(1, 0, 0, 0)
+    mainContainer.BackgroundTransparency = 1
+    mainContainer.AutomaticSize = Enum.AutomaticSize.Y
+
+    local mainLayout = Instance.new("UIListLayout", mainContainer)
+    mainLayout.Padding = UDim.new(0, 6 * scale)  -- reduced padding
+    mainLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- Page 2: Extras (feature list)
+    local extrasPage = Instance.new("ScrollingFrame", contentContainer)
+    extrasPage.Size = UDim2.new(1, 0, 1, 0)
+    extrasPage.BackgroundTransparency = 1
+    extrasPage.ScrollBarThickness = 6 * scale
+    extrasPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+    extrasPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    extrasPage.Visible = false
+
+    local extrasContainer = Instance.new("Frame", extrasPage)
+    extrasContainer.Size = UDim2.new(1, 0, 0, 0)
+    extrasContainer.BackgroundTransparency = 1
+    extrasContainer.AutomaticSize = Enum.AutomaticSize.Y
+
+    local extrasLayout = Instance.new("UIListLayout", extrasContainer)
+    extrasLayout.Padding = UDim.new(0, 4 * scale)  -- reduced
+    extrasLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+    -- Helper: add toggle row (used on main page) with reduced height
+    local function addToggle(label, settingKey, extraLogic)
+        local row = Instance.new("Frame", mainContainer)
+        row.Size = UDim2.new(1, 0, 0, 38 * scale)  -- smaller than 46
+        row.BackgroundTransparency = 1
+
+        local btn = Instance.new("TextButton", row)
+        btn.Size = UDim2.new(1, 0, 1, 0)
+        btn.BackgroundColor3 = SETTINGS[settingKey] and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
+        btn.Text = label .. "\n" .. (SETTINGS[settingKey] and "ON" or "OFF")
+        btn.TextColor3 = SETTINGS[settingKey] and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 11 * scale
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8 * scale)
+        AddOutline(btn)
+
+        btn.MouseButton1Click:Connect(function()
+            SETTINGS[settingKey] = not SETTINGS[settingKey]
+            local newState = SETTINGS[settingKey]
+            btn.Text = label .. "\n" .. (newState and "ON" or "OFF")
+            btn.BackgroundColor3 = newState and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
+            btn.TextColor3 = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
+            if extraLogic then extraLogic(newState) end
+            saveConfig()
+        end)
+        return btn
+    end
+
+    local function addInput(label, currentVal, onChange)
+        local row = Instance.new("Frame", mainContainer)
+        row.Size = UDim2.new(1, 0, 0, 32 * scale)  -- reduced
+        row.BackgroundTransparency = 1
+
+        local lbl = Instance.new("TextLabel", row)
+        lbl.Size = UDim2.new(0, 100 * scale, 1, 0)
+        lbl.BackgroundTransparency = 1
+        lbl.Text = label
+        lbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = 11 * scale
+        lbl.TextXAlignment = Enum.TextXAlignment.Left
+
+        local box = Instance.new("TextBox", row)
+        box.Size = UDim2.new(0, 100 * scale, 1, -4 * scale)
+        box.Position = UDim2.new(1, -110 * scale, 0, 2 * scale)
+        box.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
+        box.Text = tostring(currentVal)
+        box.TextColor3 = Color3.fromRGB(255, 255, 255)
+        box.Font = Enum.Font.GothamBold
+        box.TextSize = 11 * scale
+        Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6 * scale)
+        AddOutline(box)
+
+        box.FocusLost:Connect(function()
+            local val = tonumber(box.Text)
+            if val then onChange(val) end
+        end)
+        return box
+    end
+
+    -- Build main page content
+    addToggle("SPIN", "SPIN_ENABLED", function(on)
+        if on then applySpin() else removeSpin() end
+        saveMenuConfig()
+    end)
+    addInput("Spin Speed:", SETTINGS.SPIN_SPEED, function(v)
+        SETTINGS.SPIN_SPEED = v
+        if SETTINGS.SPIN_ENABLED then applySpin() end
+        saveMenuConfig()
+    end)
+    addToggle("SPEED OVERRIDE", "SPEED_ENABLED", nil)
+    addInput("Speed Value:", SETTINGS.TARGET_SPEED, function(v)
+        SETTINGS.TARGET_SPEED = v
+        saveMenuConfig()
+    end)
+    addInput("Steal Speed:", SETTINGS.STEAL_SPEED, function(v)
+        SETTINGS.STEAL_SPEED = v
+        saveMenuConfig()
+    end)
+    addToggle("UNWALK", "UNWALK", nil)
+    addToggle("SPAM", "SPAM_ENABLED", nil)
+    addInput("Float Height:", SETTINGS.FLOAT_HEIGHT, function(v)
+        SETTINGS.FLOAT_HEIGHT = v
+        saveConfig()
+    end)
+
+    -- GUI Scale slider
+    local scaleRow = Instance.new("Frame", mainContainer)
+    scaleRow.Size = UDim2.new(1, 0, 0, 32 * scale)
+    scaleRow.BackgroundTransparency = 1
+
+    local scaleLabel = Instance.new("TextLabel", scaleRow)
+    scaleLabel.Size = UDim2.new(0, 100 * scale, 1, 0)
+    scaleLabel.BackgroundTransparency = 1
+    scaleLabel.Text = "GUI Scale"
+    scaleLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+    scaleLabel.Font = Enum.Font.GothamBold
+    scaleLabel.TextSize = 11 * scale
+    scaleLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+    local scaleBox = Instance.new("TextBox", scaleRow)
+    scaleBox.Size = UDim2.new(0, 70 * scale, 1, -4 * scale)
+    scaleBox.Position = UDim2.new(1, -80 * scale, 0, 2 * scale)
+    scaleBox.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
+    scaleBox.Text = tostring(math.round(globalGUIScale * 100))
+    scaleBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+    scaleBox.Font = Enum.Font.GothamBold
+    scaleBox.TextSize = 11 * scale
+    Instance.new("UICorner", scaleBox).CornerRadius = UDim.new(0, 6 * scale)
+    AddOutline(scaleBox)
+
+    scaleBox.FocusLost:Connect(function()
+        local val = tonumber(scaleBox.Text)
+        if val then
+            setGUIScale(val)
+        else
+            scaleBox.Text = tostring(math.round(globalGUIScale * 100))
+        end
+    end)
+
+    -- Build extras page content (same as before, but smaller row heights)
     local features = {
         {"AUTO GRAB", "ENABLED", nil, false},
         {"SPEED", "SPEED_ENABLED", nil, false},
@@ -827,43 +961,41 @@ local function buildExtraPanel()
         local bindKey = feat[3]
         local isAction = feat[4]
 
-        local row = Instance.new("Frame", scroll)
-        row.Size = UDim2.new(1, -12, 0, 38)
+        local row = Instance.new("Frame", extrasContainer)
+        row.Size = UDim2.new(1, 0, 0, 34 * scale)  -- reduced from 38
         row.BackgroundTransparency = 1
 
-        -- Left side: toggle/action button
         local toggleBtn = Instance.new("TextButton", row)
-        toggleBtn.Size = UDim2.new(0, 150, 1, -4)
-        toggleBtn.Position = UDim2.new(0, 4, 0, 2)
-        if isAction then
-            toggleBtn.Text = label .. "\nACTION"
-            toggleBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
-            toggleBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
-        else
-            local state = SETTINGS[settingKey] or false
-            toggleBtn.Text = label .. "\n" .. (state and "ON" or "OFF")
-            toggleBtn.BackgroundColor3 = state and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
-            toggleBtn.TextColor3 = state and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
-        end
+        toggleBtn.Size = UDim2.new(0, 150 * scale, 1, -4 * scale)
+        toggleBtn.Position = UDim2.new(0, 4 * scale, 0, 2 * scale)
+        toggleBtn.Text = label
         toggleBtn.Font = Enum.Font.GothamBold
-        toggleBtn.TextSize = 11
-        Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8)
+        toggleBtn.TextSize = 12 * scale
+        toggleBtn.TextXAlignment = Enum.TextXAlignment.Left
+        toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+        Instance.new("UICorner", toggleBtn).CornerRadius = UDim.new(0, 8 * scale)
         AddOutline(toggleBtn)
 
-        -- Right side: keybind box
         local keybindBox = Instance.new("TextBox", row)
-        keybindBox.Size = UDim2.new(0, 80, 1, -4)
-        keybindBox.Position = UDim2.new(1, -84, 0, 2)
+        keybindBox.Size = UDim2.new(0, 80 * scale, 1, -4 * scale)
+        keybindBox.Position = UDim2.new(1, -84 * scale, 0, 2 * scale)
         keybindBox.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
         local currentBind = bindKey and KEYBINDS[bindKey]
         keybindBox.Text = (currentBind and getFriendlyKeyName(currentBind)) or "None"
         keybindBox.TextColor3 = Color3.fromRGB(255, 255, 255)
         keybindBox.Font = Enum.Font.GothamBold
-        keybindBox.TextSize = 11
-        Instance.new("UICorner", keybindBox).CornerRadius = UDim.new(0, 6)
+        keybindBox.TextSize = 11 * scale
+        keybindBox.TextXAlignment = Enum.TextXAlignment.Center
+        Instance.new("UICorner", keybindBox).CornerRadius = UDim.new(0, 6 * scale)
         AddOutline(keybindBox)
 
-        -- Keybind capturing
+        if not isAction then
+            local state = SETTINGS[settingKey] or false
+            toggleBtn.BackgroundColor3 = state and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
+        else
+            toggleBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
+        end
+
         local capturing = false
         keybindBox.Focused:Connect(function()
             if bindKey then
@@ -888,7 +1020,6 @@ local function buildExtraPanel()
             end)
         end
 
-        -- Toggle/action click handler
         toggleBtn.MouseButton1Click:Connect(function()
             if isAction then
                 if settingKey == "DROP" then
@@ -899,9 +1030,7 @@ local function buildExtraPanel()
             else
                 SETTINGS[settingKey] = not SETTINGS[settingKey]
                 local newState = SETTINGS[settingKey]
-                toggleBtn.Text = label .. "\n" .. (newState and "ON" or "OFF")
                 toggleBtn.BackgroundColor3 = newState and Color3.fromRGB(20, 80, 150) or Color3.fromRGB(10, 25, 50)
-                toggleBtn.TextColor3 = newState and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(200, 200, 200)
 
                 if settingKey == "LOCK_ENABLED" then
                     if newState then equipAnyTool(); startAutoSwing() else stopAutoSwing() end
@@ -933,9 +1062,98 @@ local function buildExtraPanel()
             end
         end)
     end
+
+    -- Extras and Back buttons (white)
+    local extrasBtn = Instance.new("TextButton", panel)
+    extrasBtn.Size = UDim2.new(0, 100 * scale, 0, 38 * scale)
+    extrasBtn.Position = UDim2.new(0.5, -50 * scale, 1, -50 * scale)
+    extrasBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    extrasBtn.Text = "📋 EXTRAS"
+    extrasBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+    extrasBtn.Font = Enum.Font.GothamBold
+    extrasBtn.TextSize = 12 * scale
+    Instance.new("UICorner", extrasBtn).CornerRadius = UDim.new(0, 8 * scale)
+    AddOutline(extrasBtn)
+    extrasBtn.MouseEnter:Connect(function()
+        extrasBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    end)
+    extrasBtn.MouseLeave:Connect(function()
+        extrasBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+
+    local backBtn = Instance.new("TextButton", panel)
+    backBtn.Size = UDim2.new(0, 100 * scale, 0, 38 * scale)
+    backBtn.Position = UDim2.new(0.5, -50 * scale, 1, -50 * scale)
+    backBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    backBtn.Text = "◀ BACK"
+    backBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+    backBtn.Font = Enum.Font.GothamBold
+    backBtn.TextSize = 12 * scale
+    Instance.new("UICorner", backBtn).CornerRadius = UDim.new(0, 8 * scale)
+    AddOutline(backBtn)
+    backBtn.MouseEnter:Connect(function()
+        backBtn.BackgroundColor3 = Color3.fromRGB(240, 240, 240)
+    end)
+    backBtn.MouseLeave:Connect(function()
+        backBtn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    end)
+    backBtn.Visible = false
+
+    local function showMainPage()
+        mainPage.Visible = true
+        extrasPage.Visible = false
+        extrasBtn.Visible = true
+        backBtn.Visible = false
+    end
+
+    local function showExtrasPage()
+        mainPage.Visible = false
+        extrasPage.Visible = true
+        extrasBtn.Visible = false
+        backBtn.Visible = true
+    end
+
+    extrasBtn.MouseButton1Click:Connect(showExtrasPage)
+    backBtn.MouseButton1Click:Connect(showMainPage)
+
+    -- Refresh page sizes after content builds
+    local function updatePageSizes()
+        mainPage.CanvasSize = UDim2.new(0, 0, 0, mainContainer.AbsoluteSize.Y + 10 * scale)
+        extrasPage.CanvasSize = UDim2.new(0, 0, 0, extrasContainer.AbsoluteSize.Y + 10 * scale)
+    end
+
+    mainContainer.ChildAdded:Connect(updatePageSizes)
+    extrasContainer.ChildAdded:Connect(updatePageSizes)
+    task.wait(0.1)
+    updatePageSizes()
 end
 
-MakeDraggable(ExtraBtn, function() extraOpen = not extraOpen; if extraOpen then buildExtraPanel() else if extraPanel then extraPanel:Destroy(); extraPanel = nil end end end)
+-- [[ HUD MENU BUTTON ]] --
+local MenuBtn = Instance.new("TextButton", HUDScreen)
+MenuBtn.Size = UDim2.new(0, 110, 0, 38)
+MenuBtn.Position = resolvePosition("MenuBtn")
+MenuBtn.BackgroundColor3 = Color3.fromRGB(10, 25, 50)
+MenuBtn.Text = "☰ MENU"
+MenuBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+MenuBtn.Font = Enum.Font.GothamBold
+MenuBtn.TextSize = 12
+Instance.new("UICorner", MenuBtn).CornerRadius = UDim.new(0, 8)
+AddOutline(MenuBtn)
+allButtons["MenuBtn"] = MenuBtn
+MakeDraggable(MenuBtn, function()
+    if mainGUI then
+        mainGUI:Destroy()
+        mainGUI = nil
+    else
+        buildMainGUI()
+    end
+end)
+
+-- Remove any leftover extra button (if present)
+if CoreGui:FindFirstChild("A1_HUD") then
+    local oldExtraBtn = HUDScreen:FindFirstChild("ExtraBtn")
+    if oldExtraBtn then oldExtraBtn:Destroy() end
+end
 
 -- [[ MAIN LOOP ]] --
 RunService.Heartbeat:Connect(function()
